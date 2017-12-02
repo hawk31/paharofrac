@@ -9,11 +9,11 @@ logging.basicConfig(format='%(acstime)s - %(name) - %(levelname)s - %(message)s'
                     level=logging.INFO)
 
 PAYMENT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                    'payment.csv')
+                            'payment.csv')
 
-users = ['@hawk31', '@phofe', '@nekmo', '@unaperalimonera', '@bearc11']
-datef = '%d/%m/%Y'
-date_err = 'Not a valid date. `dd/mm/yyyy`'
+USERS = ['@hawk31', '@phofe', '@nekmo', '@unaperalimonera', '@bearc11']
+DATEF = '%d/%m/%Y'
+DATE_ERR = 'Not a valid date. `dd/mm/yyyy`'
 
 
 class SpotiBot:
@@ -60,7 +60,7 @@ class SpotiBot:
             bot.send_message(chat_id=update.message.chat_id, text='Usage: `/paymentstatus user`')
             return
         user = args[0]
-        if user not in users:
+        if user not in USERS:
             bot.send_message(chat_id=update.message.chat_id, text='User does not belong in group.')
             return
         user_data = self.df[self.df.User == user]
@@ -84,21 +84,21 @@ class SpotiBot:
             return
         user = args[0]
         try:
-            date = datetime.strptime(args[1], datef)
+            date = datetime.strptime(args[1], DATEF)
         except ValueError:
-            bot.send_message(chat_id=update.message.chat_id, text=date_err)
+            bot.send_message(chat_id=update.message.chat_id, text=DATE_ERR)
             return
 
         if date < datetime.now():
-            bot.send_message(chat_id=update.message.chat_id, text=date_err)
+            bot.send_message(chat_id=update.message.chat_id, text=DATE_ERR)
             return
 
-        if user not in users:
+        if user not in USERS:
             bot.send_message(chat_id=update.message.chat_id, text='User does not belong in group.')
             return
 
-        self.df.loc[self.df.User == user, 'Last Paid'] = datetime.now().strftime(datef)
-        self.df.loc[self.df.User == user, 'Paid until'] = date.strftime(datef)
+        self.df.loc[self.df.User == user, 'Last Paid'] = datetime.now().strftime(DATEF)
+        self.df.loc[self.df.User == user, 'Paid until'] = date.strftime(DATEF)
 
         bot.send_message(chat_id=update.message.chat_id,
                          text='Updated correctly. @hawk31 has been notified.')
@@ -106,13 +106,17 @@ class SpotiBot:
         self.df = pd.read_csv(PAYMENT_PATH)
 
     def compute_morosos(self):
+        """
+        Checks users that are not up-to-date with payment or
+        have payment due in less than a month
+        """
         morosos = []
         less_month = []
 
         for index, item in self.df.iterrows():
             user = item['User']
-            last_paid = datetime.strptime(item['Last Paid'], datef)
-            paid_until = datetime.strptime(item['Paid until'], datef)
+            last_paid = datetime.strptime(item['Last Paid'], DATEF)
+            paid_until = datetime.strptime(item['Paid until'], DATEF)
             delta = (paid_until - last_paid).days
             if delta < 0:
                 morosos.append(user)
@@ -123,6 +127,14 @@ class SpotiBot:
         return morosos, less_month
 
     def overall_status(self, bot, update):
+        """
+        Gives an overall report of morosidad and close payments
+
+        Usage
+        -----
+
+        /overallstatus
+        """
         morosos, less_month = self.compute_morosos()
         if len(morosos) > 0:
             bot.send_message(chat_id=update.message.chat_id,
@@ -132,6 +144,9 @@ class SpotiBot:
                              text='Tienen que pagar en menos de un mes: {}'.format(less_month))
 
     def callback_morosos(self, bot, job):
+        """
+        Callback job for checking self.overall_status
+        """
         morosos, less_month = self.compute_morosos()
         if len(morosos) > 0:
             bot.send_message(chat_id=job.context,
@@ -141,6 +156,9 @@ class SpotiBot:
                              text='Tienen que pagar en menos de un mes: {}'.format(less_month))
 
     def callback_timer(self, bot, update, job_queue):
+        """
+        Timer for self.callback_morosos
+        """
         bot.send_message(chat_id=update.message.chat_id,
                          text='Cada semana os avisaré de pagos, guapos.')
         self.queue.run_daily(self.callback_morosos, time=time(12, 00),
